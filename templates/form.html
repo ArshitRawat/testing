@@ -1,17 +1,298 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>RGPV Result Fetcher</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RGPV Result Scraper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .status-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status-info {
+            background-color: #d6eaf8;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .download-btn {
+            background-color: #28a745;
+            display: none;
+            margin-top: 10px;
+        }
+        .download-btn:hover {
+            background-color: #218838;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #ffeaa7;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        .form-col {
+            flex: 1;
+        }
+    </style>
 </head>
 <body>
-  <h2>Enter Details to Fetch RGPV Result</h2>
-  <form action="/submit" method="post">
-    Branch: <input type="text" name="branch" required><br>
-    Year of Admission: <input type="text" name="year" required><br>
-    Semester: <input type="number" name="sem" required><br>
-    Starting Roll: <input type="number" name="start" required><br>
-    Ending Roll: <input type="number" name="end" required><br>
-    <button type="submit">Fetch Results</button>
-  </form>
+    <div class="container">
+        <h1>🎓 RGPV Result Scraper</h1>
+        
+        <div class="warning">
+            <strong>⚠️ Important Notes:</strong>
+            <ul>
+                <li>Limit batch size to 50 enrollments to prevent timeouts</li>
+                <li>Processing may take 2-5 minutes depending on batch size</li>
+                <li>The process uses CAPTCHA recognition which may occasionally fail</li>
+                <li>Results will be available as Excel download</li>
+            </ul>
+        </div>
+
+        <form id="scraperForm">
+            <div class="form-group">
+                <label for="branch">Branch:</label>
+                <select id="branch" name="branch" required>
+                    <option value="">Select Branch</option>
+                    <option value="CS">Computer Science (CS)</option>
+                    <option value="IT">Information Technology (IT)</option>
+                    <option value="ME">Mechanical Engineering (ME)</option>
+                    <option value="AI">Artificial Intelligence (AI)</option>
+                    <option value="DS">Data Science (DS)</option>
+                    <option value="EC">Electronics & Communication (EC)</option>
+                    <option value="EX">Electronics (EX)</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-col">
+                    <label for="year">Year (2-digit):</label>
+                    <input type="text" id="year" name="year" placeholder="e.g., 21" pattern="[0-9]{2}" required>
+                </div>
+                <div class="form-col">
+                    <label for="sem">Semester:</label>
+                    <select id="sem" name="sem" required>
+                        <option value="">Select Semester</option>
+                        <option value="1">1st Semester</option>
+                        <option value="2">2nd Semester</option>
+                        <option value="3">3rd Semester</option>
+                        <option value="4">4th Semester</option>
+                        <option value="5">5th Semester</option>
+                        <option value="6">6th Semester</option>
+                        <option value="7">7th Semester</option>
+                        <option value="8">8th Semester</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-col">
+                    <label for="start">Start Number:</label>
+                    <input type="number" id="start" name="start" min="1" max="999" required>
+                </div>
+                <div class="form-col">
+                    <label for="end">End Number:</label>
+                    <input type="number" id="end" name="end" min="1" max="999" required>
+                </div>
+            </div>
+
+            <button type="submit" id="submitBtn">🚀 Start Scraping</button>
+        </form>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="progressText" style="text-align: center; margin-top: 10px;">0%</div>
+        </div>
+
+        <div id="statusMessage"></div>
+        <button class="download-btn" id="downloadBtn" onclick="downloadFile()">📥 Download Results</button>
+    </div>
+
+    <script>
+        let statusInterval;
+        
+        document.getElementById('scraperForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const start = parseInt(formData.get('start'));
+            const end = parseInt(formData.get('end'));
+            
+            // Validate batch size
+            if (end - start > 50) {
+                showStatus('Please limit batch size to 50 enrollments at a time', 'error');
+                return;
+            }
+            
+            if (start > end) {
+                showStatus('Start number must be less than or equal to end number', 'error');
+                return;
+            }
+            
+            // Start processing
+            fetch('/submit', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                } else {
+                    showStatus('Processing started... Please wait', 'info');
+                    document.getElementById('submitBtn').disabled = true;
+                    document.getElementById('progressContainer').style.display = 'block';
+                    startStatusCheck();
+                }
+            })
+            .catch(error => {
+                showStatus('Error starting process: ' + error, 'error');
+            });
+        });
+        
+        function startStatusCheck() {
+            statusInterval = setInterval(checkStatus, 2000);
+        }
+        
+        function checkStatus() {
+            fetch('/status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.running) {
+                    const progress = Math.round((data.progress / data.total) * 100);
+                    document.getElementById('progressFill').style.width = progress + '%';
+                    document.getElementById('progressText').textContent = 
+                        `${progress}% (${data.progress}/${data.total})`;
+                    showStatus(`Processing... ${data.progress}/${data.total} completed`, 'info');
+                } else {
+                    clearInterval(statusInterval);
+                    document.getElementById('submitBtn').disabled = false;
+                    
+                    if (data.file_path) {
+                        showStatus('✅ Processing completed successfully!', 'success');
+                        document.getElementById('downloadBtn').style.display = 'block';
+                    } else {
+                        showStatus('❌ Processing completed but no results found', 'error');
+                    }
+                }
+            })
+            .catch(error => {
+                clearInterval(statusInterval);
+                document.getElementById('submitBtn').disabled = false;
+                showStatus('Error checking status: ' + error, 'error');
+            });
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status-message status-' + type;
+            statusDiv.style.display = 'block';
+        }
+        
+        function downloadFile() {
+            window.location.href = '/download';
+        }
+        
+        // Form validation
+        document.getElementById('end').addEventListener('input', function() {
+            const start = parseInt(document.getElementById('start').value) || 0;
+            const end = parseInt(this.value) || 0;
+            
+            if (end - start > 50) {
+                this.setCustomValidity('Batch size cannot exceed 50');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    </script>
 </body>
 </html>
