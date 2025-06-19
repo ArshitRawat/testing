@@ -147,14 +147,9 @@ def readFromImage(captchaImage: str) -> str:
 
 def resultFound(start: int, end: int, branch: str, year: str, sem: int):
     """Main function to scrape results"""
-    global processing_status
     
     if branch not in ["CS", "IT", "ME", "AI", "DS", "EC", "EX"]:
         return None, ["Wrong Branch Entered"]
-
-    processing_status["running"] = True
-    processing_status["progress"] = 0
-    processing_status["total"] = end - start + 1
     
     noResult = []
     filename = f'{branch}_sem{sem}_result.csv'
@@ -167,7 +162,6 @@ def resultFound(start: int, end: int, branch: str, year: str, sem: int):
     
     driver = create_chrome_driver()
     if not driver:
-        processing_status["running"] = False
         return None, ["Failed to create browser driver"]
     
     try:
@@ -177,8 +171,7 @@ def resultFound(start: int, end: int, branch: str, year: str, sem: int):
         first_row_data = {"is_first": True}
         current = start
         
-        while current <= end and processing_status["running"]:
-            # Format enrollment number
+        while current <= end:
             if current < 10:
                 num = "00" + str(current)
             elif current < 100:
@@ -208,7 +201,6 @@ def resultFound(start: int, end: int, branch: str, year: str, sem: int):
                     noResult.append(enroll)
             
             current += 1
-            processing_status["progress"] = current - start
             
             # Memory management - restart driver every 10 enrollments
             if (current - start) % 10 == 0:
@@ -223,18 +215,15 @@ def resultFound(start: int, end: int, branch: str, year: str, sem: int):
                     print(f"Error restarting driver: {e}")
                     break
         
-        processing_status["running"] = False
         
         if os.path.exists(filepath):
             excel_file = makeXslx(filepath.split(".")[0])
-            processing_status["file_path"] = excel_file
         else:
             excel_file = None
             
         return excel_file, noResult
         
     except Exception as e:
-        processing_status["running"] = False
         print(f"Error in resultFound: {e}")
         return None, [str(e)]
     finally:
