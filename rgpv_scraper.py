@@ -24,6 +24,33 @@ def writeCSV(enroll, name, *args, sgpa, cgpa, remark, filename):
         f.writelines(information)
         f.close()
 
+def create_chrome_driver():
+    """Create Chrome driver with optimized options for Railway"""
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-plugins')
+    options.add_argument('--disable-images')
+    options.add_argument('--disable-javascript')
+    options.add_argument('--window-size=1024,768')
+    options.add_argument('--memory-pressure-off')
+    options.add_argument('--max_old_space_size=4096')
+    options.add_argument('--single-process')
+    options.add_argument('--disable-background-timer-throttling')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--disable-backgrounding-occluded-windows')
+    
+    try:
+        driver = webdriver.Chrome(options=options)
+        driver.implicitly_wait(2)
+        return driver
+    except Exception as e:
+        print(f"Error creating Chrome driver: {e}")
+        return None
+
 
 def makeXslx(filename):
     csvFile = f'{filename}.csv'
