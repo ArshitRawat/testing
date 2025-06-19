@@ -45,6 +45,91 @@ def downloadImage(url, name):
         image.save(f, "JPEG")
     return path
 
+def process_single_enrollment(enroll, driver, sem, first_row_data, filepath):
+    """Process a single enrollment number"""
+    try:
+        print(f"Processing ==> {enroll}")
+        
+        # Get captcha
+        img_element = driver.find_element(By.XPATH, '//img[contains(@src, "CaptchaImage.axd")]')
+        img_src = img_element.get_attribute("src")
+        url = f'http://result.rgpv.ac.in/result/{img_src.split("Result/")[-1]}'
+        
+        captcha_path = downloadImage(url, f"captcha_{enroll}.jpg")
+        if not captcha_path:
+            return False, "Failed to download captcha"
+        
+        captcha = readFromImage(captcha_path)
+        if not captcha:
+            return False, "Failed to read captcha"
+        
+        # Fill form
+        Select(driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_drpSemester"]')).select_by_value(str(sem))
+        driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_TextBox1"]').send_keys(captcha)
+        time.sleep(0.5)
+        driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_txtrollno"]').send_keys(enroll)
+        time.sleep(1)
+        driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_btnviewresult"]').send_keys(Keys.ENTER)
+        
+        time.sleep(2)
+        
+        # Handle alert
+        try:
+            alert = Alert(driver)
+            alerttext = alert.text
+            alert.accept()
+            if "Result" in alerttext:
+                driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_btnReset"]').send_keys(Keys.ENTER)
+                return False, "Result not found"
+        except NoAlertPresentException:
+            pass
+        
+        # Check if result found
+        if "Total Credit" in driver.page_source:
+            # Write header if first row
+            if first_row_data["is_first"]:
+                details = []
+                rows = driver.find_elements(By.CSS_SELECTOR, "table.gridtable tbody tr")
+                for row in rows:
+                    cells = row.find_elements(By.TAG_NAME, "td")
+                    if len(cells) >= 4 and '[T]' in cells[0].text:
+                        details.append(cells[0].text.strip('- [T]'))
+                first_row_data["is_first"] = False
+                writeCSV("Enrollment No.", "Name", *details, sgpa="SGPA", cgpa="CGPA", remark="REMARK", filename=filepath)
+            
+            # Extract data
+            name = driver.find_element("id", "ctl00_ContentPlaceHolder1_lblNameGrading").text
+            grades = []
+            rows = driver.find_elements(By.CSS_SELECTOR, "table.gridtable tbody tr")
+            for row in rows:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                if len(cells) >= 4 and '[T]' in cells[0].text:
+                    grades.append(cells[3].text.strip())
+            
+            sgpa = driver.find_element("id", "ctl00_ContentPlaceHolder1_lblSGPA").text
+            cgpa = driver.find_element("id", "ctl00_ContentPlaceHolder1_lblcgpa").text
+            result = driver.find_element("id", "ctl00_ContentPlaceHolder1_lblResultNewGrading").text
+            
+            result = result.replace(",", " ")
+            name = name.replace("\n", " ")
+            writeCSV(enroll, name, *grades, sgpa=sgpa, cgpa=cgpa, remark=result, filename=filepath)
+            
+            driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_btnReset"]').send_keys(Keys.ENTER)
+            return True, "Success"
+        else:
+            driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_TextBox1"]').clear()
+            driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_txtrollno"]').clear()
+            return False, "Wrong captcha"
+            
+    except Exception as e:
+        print(f"Error processing {enroll}: {e}")
+        try:
+            driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_TextBox1"]').clear()
+            driver.find_element(By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_txtrollno"]').clear()
+        except:
+            pass
+        return False, str(e)
+
 
 def readFromImage(captchaImage: str) -> str:
     # Set tesseract path for different environments
@@ -61,160 +146,102 @@ def readFromImage(captchaImage: str) -> str:
 
 
 def resultFound(start: int, end: int, branch: str, year: str, sem: int):
+    """Main function to scrape results"""
+    global processing_status
+    
     if branch not in ["CS", "IT", "ME", "AI", "DS", "EC", "EX"]:
-        print("Wrong Branch Entered")
-        return None, []
+        return None, ["Wrong Branch Entered"]
 
+    processing_status["running"] = True
+    processing_status["progress"] = 0
+    processing_status["total"] = end - start + 1
+    
     noResult = []
-    
-    # Configure Chrome options for headless mode (required for Railway)
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    
-    firstRow = True
     filename = f'{branch}_sem{sem}_result.csv'
-    
-    # Use temporary directory
     temp_dir = tempfile.gettempdir()
     filepath = os.path.join(temp_dir, filename)
     
+    # Remove existing file
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    
+    driver = create_chrome_driver()
+    if not driver:
+        processing_status["running"] = False
+        return None, ["Failed to create browser driver"]
+    
     try:
-        driver = webdriver.Chrome(options=options)
-        driver.implicitly_wait(0.5)
         driver.get("http://result.rgpv.ac.in/Result/ProgramSelect.aspx")
         driver.find_element(By.ID, "radlstProgram_1").click()
-
-        while start <= end:
-            if (start < 10):
-                num = "00" + str(start)
-            elif (start < 100):
-                num = "0" + str(start)
+        
+        first_row_data = {"is_first": True}
+        current = start
+        
+        while current <= end and processing_status["running"]:
+            # Format enrollment number
+            if current < 10:
+                num = "00" + str(current)
+            elif current < 100:
+                num = "0" + str(current)
             else:
-                num = str(start)
-
+                num = str(current)
+            
             enroll = f"0105{branch}{year}1{num}"
-            print(f"Currently compiling ==> {enroll}")
-
-            img_element = driver.find_element(
-                By.XPATH, '//img[contains(@src, "CaptchaImage.axd")]')
-            img_src = img_element.get_attribute("src")
-            url = f'http://result.rgpv.ac.in/result/{img_src.split("Result/")[-1]}'
-
-            captcha_path = downloadImage(url, "captcha.jpg")
-            captcha = readFromImage(captcha_path)
-            captcha = captcha.replace(" ", "")
-
-            Select(
-                driver.find_element(
-                    By.XPATH, '//*[@id="ctl00_ContentPlaceHolder1_drpSemester"]')
-            ).select_by_value(str(sem))
-            driver.find_element(
-                By.XPATH,
-                '//*[@id="ctl00_ContentPlaceHolder1_TextBox1"]').send_keys(captcha)
-            time.sleep(1)
-            driver.find_element(
-                By.XPATH,
-                '//*[@id="ctl00_ContentPlaceHolder1_txtrollno"]').send_keys(enroll)
-            time.sleep(2)
-            driver.find_element(
-                By.XPATH,
-                '//*[@id="ctl00_ContentPlaceHolder1_btnviewresult"]').send_keys(
-                    Keys.ENTER)
-
-            time.sleep(2)
-            alert = Alert(driver)
-            alerttext = ""
-            try:
-                alerttext = alert.text
-                alert.accept()
-            except NoAlertPresentException:
-                pass
-            except InvalidSessionIdException:
-                pass
-
-            if "Total Credit" in driver.page_source:
-                if (firstRow):
-                    details = []
-                    rows = driver.find_elements(By.CSS_SELECTOR,
-                                                "table.gridtable tbody tr")
-                    for row in rows:
-                        cells = row.find_elements(By.TAG_NAME, "td")
-                        if len(cells) >= 4 and '[T]' in cells[0].text:
-                            details.append(cells[0].text.strip('- [T]'))
-                    firstRow = False
-                    writeCSV("Enrollment No.",
-                             "Name",
-                             *details,
-                             sgpa="SGPA",
-                             cgpa="CGPA",
-                             remark="REMARK",
-                             filename=filepath)
-                name = driver.find_element(
-                    "id", "ctl00_ContentPlaceHolder1_lblNameGrading").text
-                grades = []
-                rows = driver.find_elements(By.CSS_SELECTOR,
-                                            "table.gridtable tbody tr")
-                for row in rows:
-                    cells = row.find_elements(By.TAG_NAME, "td")
-                    if len(cells) >= 4 and '[T]' in cells[0].text:
-                        grades.append(cells[3].text.strip())
-                sgpa = driver.find_element(
-                    "id", "ctl00_ContentPlaceHolder1_lblSGPA").text
-                cgpa = driver.find_element(
-                    "id", "ctl00_ContentPlaceHolder1_lblcgpa").text
-                result = driver.find_element(
-                    "id", "ctl00_ContentPlaceHolder1_lblResultNewGrading").text
-
-                result = result.replace(",", " ")
-                name = name.replace("\n", " ")
-                writeCSV(enroll,
-                         name,
-                         *grades,
-                         sgpa=sgpa,
-                         cgpa=cgpa,
-                         remark=result,
-                         filename=filepath)
-                print("Compilation Successful")
-
-                driver.find_element(
-                    By.XPATH,
-                    '//*[@id="ctl00_ContentPlaceHolder1_btnReset"]').send_keys(
-                        Keys.ENTER)
-
-                start = start + 1
-            else:
-                if "Result" in alerttext:  # when enrollment number is not found
-                    driver.find_element(
-                        By.XPATH,
-                        '//*[@id="ctl00_ContentPlaceHolder1_btnReset"]').send_keys(
-                            Keys.ENTER)
-                    start = start + 1
+            
+            # Process enrollment with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                success, message = process_single_enrollment(enroll, driver, sem, first_row_data, filepath)
+                
+                if success:
+                    print(f"✓ {enroll} - Success")
+                    break
+                elif "Result not found" in message:
                     noResult.append(enroll)
-                    print(f"Enrollment NO: {enroll} not found.")
-                else:  # when captcha is wrong
-                    driver.find_element(
-                        By.XPATH,
-                        '//*[@id="ctl00_ContentPlaceHolder1_TextBox1"]').clear()
-                    driver.find_element(
-                        By.XPATH,
-                        '//*[@id="ctl00_ContentPlaceHolder1_txtrollno"]').clear()
-                    print("Wrong Captcha Entered")
-                    continue
-
-        print(f'Enrollment Numbers not found ====> {noResult}')
-        excel_file = makeXslx(filepath.split(".")[0])
-        driver.quit()
+                    print(f"✗ {enroll} - Not found")
+                    break
+                elif attempt < max_retries - 1:
+                    print(f"⚠ {enroll} - Retry {attempt + 1}: {message}")
+                    time.sleep(1)
+                else:
+                    print(f"✗ {enroll} - Failed after retries: {message}")
+                    noResult.append(enroll)
+            
+            current += 1
+            processing_status["progress"] = current - start
+            
+            # Memory management - restart driver every 10 enrollments
+            if (current - start) % 10 == 0:
+                try:
+                    driver.quit()
+                    time.sleep(2)
+                    driver = create_chrome_driver()
+                    if driver:
+                        driver.get("http://result.rgpv.ac.in/Result/ProgramSelect.aspx")
+                        driver.find_element(By.ID, "radlstProgram_1").click()
+                except Exception as e:
+                    print(f"Error restarting driver: {e}")
+                    break
+        
+        processing_status["running"] = False
+        
+        if os.path.exists(filepath):
+            excel_file = makeXslx(filepath.split(".")[0])
+            processing_status["file_path"] = excel_file
+        else:
+            excel_file = None
+            
         return excel_file, noResult
         
     except Exception as e:
-        print(f"Error occurred: {e}")
-        if 'driver' in locals():
+        processing_status["running"] = False
+        print(f"Error in resultFound: {e}")
+        return None, [str(e)]
+    finally:
+        try:
             driver.quit()
-        return None, noResult
+        except:
+            pass
 
 
 app = Flask(__name__)
