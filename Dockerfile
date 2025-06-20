@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     unzip \
     curl \
-    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -16,8 +15,8 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install specific ChromeDriver version 137.0.7151.119
-RUN CHROMEDRIVER_VERSION="137.0.7151.119" && \
+# Install specific ChromeDriver version 131.0.6778.108 (compatible with current Chrome)
+RUN CHROMEDRIVER_VERSION="131.0.6778.108" && \
     mkdir -p /opt/chromedriver-$CHROMEDRIVER_VERSION && \
     curl -sS -o /tmp/chromedriver_linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
     unzip -qq /tmp/chromedriver_linux64.zip -d /tmp && \
@@ -39,8 +38,13 @@ COPY . .
 # Create templates directory if it doesn't exist
 RUN mkdir -p templates
 
+# Set environment variables for Chrome
+ENV DISPLAY=:99
+ENV CHROME_BIN=/usr/bin/google-chrome
+ENV CHROME_PATH=/usr/bin/google-chrome
+
 # Expose port
 EXPOSE $PORT
 
 # Command to run the application
-CMD gunicorn --bind 0.0.0.0:$PORT rgpv_scraper:app
+CMD gunicorn --bind 0.0.0.0:$PORT --timeout 300 --workers 1 newscrper:app
