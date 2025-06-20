@@ -374,7 +374,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 progress_data = {}
 
 # Get OCR API key from environment variable
-OCR_API_KEY = os.environ.get('OCR_API_KEY')
+OCR_API_KEY = os.environ.get('K86969399988957')
 
 if not OCR_API_KEY:
     print("WARNING: OCR_API_KEY environment variable not set!")
