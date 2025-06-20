@@ -386,6 +386,9 @@ def form():
 @app.route('/submit', methods=['POST'])
 def submit():
     try:
+        # Debug: Print all form data
+        print("Form data received:", dict(request.form))
+        
         # Check if API key is configured
         if not OCR_API_KEY:
             return f"""
@@ -393,12 +396,33 @@ def submit():
             <p>OCR API key is not configured on the server. Please contact the administrator.</p>
             <a href="/">Go Back</a>
             """
+        
+        # Validate form data exists
+        required_fields = ['branch', 'year', 'sem', 'start', 'end']
+        missing_fields = [field for field in required_fields if field not in request.form or not request.form[field]]
+        
+        if missing_fields:
+            return f"""
+            <h2>❌ Missing Required Fields</h2>
+            <p>Missing fields: {', '.join(missing_fields)}</p>
+            <p>Please fill all fields and try again.</p>
+            <a href="/">Go Back</a>
+            """
             
-        branch = request.form['branch'].upper()
-        year = request.form['year']
+        branch = request.form['branch'].upper().strip()
+        year = request.form['year'].strip()
         sem = int(request.form['sem'])
         start = int(request.form['start'])
         end = int(request.form['end'])
+        
+        # Validate branch
+        valid_branches = ["CS", "IT", "ME", "AI", "DS", "EC", "EX"]
+        if branch not in valid_branches:
+            return f"""
+            <h2>❌ Invalid Branch</h2>
+            <p>Branch '{branch}' is not valid. Valid branches: {', '.join(valid_branches)}</p>
+            <a href="/">Go Back</a>
+            """
         
         # Validate range to prevent memory issues
         if end - start > 100:
