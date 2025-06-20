@@ -47,4 +47,4 @@ ENV CHROME_PATH=/usr/bin/google-chrome
 EXPOSE $PORT
 
 # Command to run the application
-CMD gunicorn --bind 0.0.0.0:$PORT --timeout 300 --workers 1 newscrper:app
+CMD gunicorn --bind 0.0.0.0:$PORT --timeout 300 --workers 1 rgpv_scraper:app
