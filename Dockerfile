@@ -16,7 +16,7 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && rm -rf /var/lib/apt/lists/*
 
 # Install specific ChromeDriver version 131.0.6778.108 (compatible with current Chrome)
-RUN CHROMEDRIVER_VERSION="131.0.6778.108" && \
+RUN CHROMEDRIVER_VERSION="137.0.7151.119" && \
     mkdir -p /opt/chromedriver-$CHROMEDRIVER_VERSION && \
     curl -sS -o /tmp/chromedriver_linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
     unzip -qq /tmp/chromedriver_linux64.zip -d /tmp && \
